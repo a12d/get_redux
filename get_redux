@@ -100,12 +100,16 @@ def get_programme_content(programme):
 
 def main():
     parser = argparse.ArgumentParser('download all shows with a show name matching a particular pattern')
-    parser.add_argument('-s', '--show', dest="show", required=True)
-    parser.add_argument('-m', '--media', dest="media", default="mp4-hi")
-    parser.add_argument('-t', '--type', dest="type", default="tv")
-    parser.add_argument("-z", "--date", dest="date", default=False)
+    parser.add_argument('-s', '--show', dest="show", required=True, 
+                        help="name of the show to be downloaded")
+    parser.add_argument('-m', '--media', dest="media", default="mp4-hi", 
+                        help="type of file to be downloaded, e.g. mp3, mp4-hi")
+    parser.add_argument('-t', '--type', dest="type", default="tv",
+                        help="type of show. 'tv' or 'radio'")
+    parser.add_argument("-z", "--date", dest="date", default=False,
+                        help="date to search on. Format YYYY-MM-DD")
     parser.add_argument('-d', '--debug', action="store_true", default=False)
-    parser.add_argument('-l', '--list', action="store_true", default=False)
+    #parser.add_argument('-l', '--list', action="store_true", default=False)
 
     global options
     options = parser.parse_args()
