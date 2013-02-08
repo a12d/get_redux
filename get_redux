@@ -10,7 +10,6 @@ import argparse
 import sys
 import os.path
 
-config_file = os.path.expanduser('~/.get_redux.cfg')
 
 def get_config(config_file):
     fin = open(config_file)
@@ -76,16 +75,19 @@ def create_http_connection():
 
 def get_programme_content(programme):
     http = create_http_connection()
+    media_url_stub = "http://devapi.bbcredux.com/programme/"
+    media_url = media_url_stub + programme + ".json"
 
-    resp, content = http.request("http://devapi.bbcredux.com/programme/" + programme + ".json")
+    resp, content = http.request(media_url)
 
     if re.match("^4", resp['status']):
-        print("Problem searching " + search_url + " Status: " + resp['status'])
+        print("Problem downloading " + media_url + " Status: " + resp['status'])
         sys.exit(1)
     else:
         data = json.loads(str(content.decode("utf-8")))
 	
         if options.debug:
+            #TODO print out the highlights of the data instead of all of it
             pp = PrettyPrinter(indent=4)
             pp.pprint(data)
 	
@@ -94,12 +96,27 @@ def get_programme_content(programme):
 	
             media_uri = data['media'][options.media]['uri']
             if not options.debug:
-                urllib.request.urlretrieve(media_uri, output_filename)
+                print(media_uri + " downloading as " + output_filename)
+                urllib.request.urlretrieve(media_uri, output_filename) 
+                print("Done")
+            else:
+                print("Meadia URL: " + media_uri)
+                print("Filename:   " + output_filename)
+                print()
 
-            print(media_uri + " downloaded as " + output_filename)
+def config_help():
+    print(
+        """The config file should consist of a JSON file with a hash
+        with the username and password. i.e.
+
+        { "username": "myusername", "password": "mypassword" }
+
+        This should be in ~/.get_redux.cfg
+        """)
 
 def main():
-    parser = argparse.ArgumentParser('download all shows with a show name matching a particular pattern')
+    default_config_file = os.path.expanduser('~/.get_redux.cfg')
+    parser = argparse.ArgumentParser('Download all shows with a show name matching a particular pattern')
     parser.add_argument('-s', '--show', dest="show", required=True, 
                         help="name of the show to be downloaded")
     parser.add_argument('-m', '--media', dest="media", default="mp4-hi", 
@@ -109,13 +126,18 @@ def main():
     parser.add_argument("-z", "--date", dest="date", default=False,
                         help="date to search on. Format YYYY-MM-DD")
     parser.add_argument('-d', '--debug', action="store_true", default=False)
+    parser.add_argument("-c", "--config", dest="config_file", default=default_config_file,
+                        help="specify config file. Default: "+default_config_file)
     #parser.add_argument('-l', '--list', action="store_true", default=False)
 
     global options
     options = parser.parse_args()
 
     global config
-    config = get_config(config_file)
+    config = get_config(options.config_file)
+    if not "username" in config or not "password" in config:
+        config_help()
+        sys.exit()
 
     if options.type == "radio":
         options.media = "mp3"
