@@ -35,7 +35,10 @@ def get_output_filename(programme_data):
         episode_number = programme_data['uuid']
 
     if 'series' in programme_data:
-        series_title = re.sub('\s', "_", programme_data['series']['title'])
+        if 'position' in programme_data['series']:
+            series_title = "Series_" + str(programme_data['series']['position']).zfill(2)
+        else:
+            series_title = programme_data['series']['title']
     else:
         series_title = "special"
     
@@ -54,14 +57,20 @@ def get_output_filename(programme_data):
 
     return(output_filename)
 
-def get_search_url(show):
+def get_show_title_search_url(show):
     search_string = re.sub("\s", "+", show)
     search_url_stub = "http://devapi.bbcredux.com/search.json?limit=256&sort=date&pname="
     search_url = search_url_stub + search_string
     return search_url
 
+def get_full_text_search_url(show):
+    search_string = re.sub("\s", "+", show)
+    search_url_stub = "http://devapi.bbcredux.com/search.json?limit=256&sort=date&q="
+    search_url = search_url_stub + search_string
+    return search_url
+
 def get_programmes(search_url, date, channel):
-    http = create_http_connection()
+    #http = create_http_connection()
 
     resp, content = http.request(search_url)
 
@@ -71,6 +80,11 @@ def get_programmes(search_url, date, channel):
     else:
         data = json.loads(str(content.decode("utf-8")))
 
+    if options.debug:
+        #TODO print out the highlights of the data instead of all of it
+        pp = PrettyPrinter(indent=4)
+        pp.pprint(data)
+	
     programmes = []
     for programme in data["results"]:
         if date and not (programme["date"] == date):
@@ -83,12 +97,12 @@ def get_programmes(search_url, date, channel):
     return(programmes)
 
 def create_http_connection():
-    http = Http(".cache")
+    http = Http(".cache", timeout=30)
     http.add_credentials(config['username'], config['password'])
     return(http)
 
-def get_programme_content(programme):
-    http = create_http_connection()
+def get_programme_details(programme):
+    #http = create_http_connection()
     media_url_stub = "http://devapi.bbcredux.com/programme/"
     media_url = media_url_stub + programme + ".json"
 
@@ -99,30 +113,41 @@ def get_programme_content(programme):
         sys.exit(1)
     else:
         data = json.loads(str(content.decode("utf-8")))
+        return(data)
+
+def list_programme_description(programme):
+    data = get_programme_details(programme)
+    print(programme + ": " + str(data['episode']))
+
+def get_programme_content(programme):
+    data = get_programme_details(programme)
+    if options.debug:
+        #TODO print out the highlights of the data instead of all of it
+        pp = PrettyPrinter(indent=4)
+        pp.pprint(data)
 	
-        if options.debug:
-            #TODO print out the highlights of the data instead of all of it
-            pp = PrettyPrinter(indent=4)
-            pp.pprint(data)
+    if data['type'] == options.type:
+        output_filename = get_output_filename(data)
 	
-        if data['type'] == options.type:
-            output_filename = get_output_filename(data)
-	
-            media_uri = data['media'][options.media]['uri']
-            if not options.debug:
-                print(media_uri + " downloading as " + output_filename)
-                try:
-                    if options.quiet:
-                        urllib.request.urlretrieve(media_uri, output_filename)
-                    else:
-                        urllib.request.urlretrieve(media_uri, output_filename, reporthook=dlProgress) 
-                except ContentTooShortError:
-                    print("problem downloading url " + media_uri)
-                print("Done")
-            else:
-                print("Meadia URL: " + media_uri)
-                print("Filename:   " + output_filename)
-                print()
+        media_uri = data['media'][options.media]['uri']
+        if not options.debug:
+            print(media_uri + " downloading as " + output_filename)
+            try:
+                if options.quiet:
+                    urllib.request.urlretrieve(media_uri, 
+                                               output_filename)
+                else:
+                    urllib.request.urlretrieve(media_uri, \
+                                               output_filename, \
+                                               reporthook=dlProgress) 
+            except:
+                print("problem downloading url " + \
+                          media_uri + " :" + str(sys.exc_info()[0]))
+            print("\nDone\n")
+        else:
+            print("Meadia URL: " + media_uri)
+            print("Filename:   " + output_filename)
+            print()
 
 def dlProgress(count, blockSize, totalSize):
     percent = int(count*blockSize*100/totalSize)
@@ -134,17 +159,36 @@ def config_help():
         """The config file should consist of a JSON file with a hash
         with the username and password. i.e.
 
-        { "username": "myusername", "password": "mypassword" }
+        { 
+        "username": "myusername", 
+        "password": "mypassword", 
+        "default_audio_type": "mp3" 
+        "default_video_type": "mp4-hi" 
+        }
 
         This should be in ~/.get_redux.cfg
         """)
 
+def set_media_type():
+    if options.type == "radio":
+        if "default_audio_type" in config:
+            options.media = config["default_audio_type"]
+        else:
+            options.media = "mp3"
+    else:
+        if "default_video_type" in config:
+            options.media = config["default_video_type"]
+        else:
+            options.media = "mp4-hi"
+
 def main():
     default_config_file = os.path.expanduser('~/.get_redux.cfg')
     parser = argparse.ArgumentParser('Download all shows with a show name matching a particular pattern')
-    parser.add_argument('-s', '--show', dest="show", required=True, 
+    parser.add_argument('-s', '--show', dest="show", 
                         help="name of the show to be downloaded")
-    parser.add_argument('-m', '--media', dest="media", default="mp4-hi", 
+    parser.add_argument('-f', '--full-text', dest="full_text", 
+                        help="full text search to be downloaded")
+    parser.add_argument('-m', '--media', dest="media", default=False, 
                         help="type of file to be downloaded, e.g. mp3, mp4-hi")
     parser.add_argument('-t', '--type', dest="type", default="tv",
                         help="type of show. 'tv' or 'radio'")
@@ -155,7 +199,8 @@ def main():
                         help="specify config file. Default: "+default_config_file)
     parser.add_argument('-b', '--channel', dest="channel", default=False)
     parser.add_argument('-q', '--quiet', action="store_true", default=False)
-    #parser.add_argument('-l', '--list', action="store_true", default=False)
+    parser.add_argument('-r', '--series', dest="series", default=False)
+    parser.add_argument('-l', '--list', action="store_true", default=False)
 
     global options
     options = parser.parse_args()
@@ -166,22 +211,33 @@ def main():
         config_help()
         sys.exit()
 
-    if options.type == "radio":
-        options.media = "mp3"
+    global http
+    http = create_http_connection()
 
-    if not options.show:
+    if not options.media:
+        set_media_type()
+        
+    if options.show:
+        search_url = get_show_title_search_url(options.show)
+    elif options.full_text:
+        search_url = get_full_text_search_url(options.full_text)
+    else:
         parser.print_help()
         sys.exit()
+        print(search_url)
 
-    search_url = get_search_url(options.show)
     programmes = get_programmes(search_url, options.date, options.channel)
 
     if options.debug:
         pp = PrettyPrinter(indent=4)
         pp.pprint(programmes)
 
-    for programme in programmes:
-        get_programme_content(programme)
+    if options.list:
+        for programme in programmes:
+            list_programme_description(programme)
+    else:
+        for programme in programmes:
+            get_programme_content(programme)
 	
 if __name__ == "__main__":
     main()
