@@ -1,4 +1,6 @@
 This is just a simple script using python to download programmes from BBC Redux (http://www.bbcredux.com).
 
 At the moment it's not terribly sophisticated but will download entire series and particular 
-programs for particular days
+programmes for particular days
+
+It will search for a programme title or do a full text search. media formats can be sepcified in a config file.

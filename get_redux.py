@@ -10,13 +10,12 @@ import argparse
 import sys
 import os.path
 
-
 def get_config(config_file):
     fin = open(config_file)
     config = json.load(fin)
     return(config)
 
-def get_output_filename(programme_data):
+def get_output_filename(programme_data, media):
     programme_title = ""
     episode_number = ""
     episode_title = ""
@@ -42,7 +41,7 @@ def get_output_filename(programme_data):
     else:
         series_title = "special"
     
-    filename_extension = programme_data['media'][options.media]['ext']
+    filename_extension = programme_data['media'][media]['ext']
 
     output_filename = programme_title 
 
@@ -57,6 +56,11 @@ def get_output_filename(programme_data):
 
     return(output_filename)
 
+def debug_print(data):
+    if debug:
+        pp = PrettyPrinter(indent=4)
+        pp.pprint(data)
+
 def get_show_title_search_url(show):
     search_string = re.sub("\s", "+", show)
     search_url_stub = "http://devapi.bbcredux.com/search.json?limit=256&sort=date&pname="
@@ -69,7 +73,7 @@ def get_full_text_search_url(show):
     search_url = search_url_stub + search_string
     return search_url
 
-def get_programmes(search_url, date, channel):
+def get_programmes(search_url, date, channel, series):
     #http = create_http_connection()
 
     resp, content = http.request(search_url)
@@ -80,10 +84,7 @@ def get_programmes(search_url, date, channel):
     else:
         data = json.loads(str(content.decode("utf-8")))
 
-    if options.debug:
-        #TODO print out the highlights of the data instead of all of it
-        pp = PrettyPrinter(indent=4)
-        pp.pprint(data)
+    debug_print(data)
 	
     programmes = []
     for programme in data["results"]:
@@ -91,6 +92,12 @@ def get_programmes(search_url, date, channel):
             continue
         if channel and not (programme["service"] == channel):
             continue
+        if series:
+            if 'series' in programme and 'position' in programme['series']:
+                if not programme['series']['position'] == series:
+                    continue
+            else:
+                continue
         programmes.append(programme["diskref"])
 
     programmes.reverse() # puts earliest pisode first
@@ -121,13 +128,10 @@ def list_programme_description(programme):
 
 def get_programme_content(programme):
     data = get_programme_details(programme)
-    if options.debug:
-        #TODO print out the highlights of the data instead of all of it
-        pp = PrettyPrinter(indent=4)
-        pp.pprint(data)
+    debug_print(data)
 	
     if data['type'] == options.type:
-        output_filename = get_output_filename(data)
+        output_filename = get_output_filename(data, options.media)
 	
         media_uri = data['media'][options.media]['uri']
         if not options.debug:
@@ -150,8 +154,9 @@ def get_programme_content(programme):
             print()
 
 def dlProgress(count, blockSize, totalSize):
+    megabyte = 1048576
     percent = int(count*blockSize*100/totalSize)
-    sys.stdout.write("\r%2d%%\t\t%d / %d" % (percent, count*blockSize, totalSize))
+    sys.stdout.write("\r%2d%%\t\t%.2fMB / %.2fMB" % (percent, count*blockSize/megabyte, totalSize/megabyte))
     sys.stdout.flush()
 
 def config_help():
@@ -169,17 +174,17 @@ def config_help():
         This should be in ~/.get_redux.cfg
         """)
 
-def set_media_type():
-    if options.type == "radio":
+def set_media_type(type, config):
+    if type == "radio":
         if "default_audio_type" in config:
-            options.media = config["default_audio_type"]
+            return(config["default_audio_type"])
         else:
-            options.media = "mp3"
+            return("mp3")
     else:
         if "default_video_type" in config:
-            options.media = config["default_video_type"]
+            return(config["default_video_type"])
         else:
-            options.media = "mp4-hi"
+            return("mp4-hi")
 
 def main():
     default_config_file = os.path.expanduser('~/.get_redux.cfg')
@@ -205,6 +210,10 @@ def main():
     global options
     options = parser.parse_args()
 
+    if options.debug:
+        global debug
+        debug = 1
+
     global config
     config = get_config(options.config_file)
     if not "username" in config or not "password" in config:
@@ -215,7 +224,7 @@ def main():
     http = create_http_connection()
 
     if not options.media:
-        set_media_type()
+        options.media = set_media_type(options.type, config)
         
     if options.show:
         search_url = get_show_title_search_url(options.show)
@@ -226,11 +235,9 @@ def main():
         sys.exit()
         print(search_url)
 
-    programmes = get_programmes(search_url, options.date, options.channel)
+    programmes = get_programmes(search_url, options.date, options.channel, options.series)
 
-    if options.debug:
-        pp = PrettyPrinter(indent=4)
-        pp.pprint(programmes)
+    debug_print(programmes)
 
     if options.list:
         for programme in programmes:
