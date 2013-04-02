@@ -73,7 +73,7 @@ def get_full_text_search_url(show):
     search_url = search_url_stub + search_string
     return search_url
 
-def get_programmes(search_url, date, channel, series):
+def get_programmes(search_url, date, channel, series, audio_described):
     #http = create_http_connection()
 
     resp, content = http.request(search_url)
@@ -88,6 +88,8 @@ def get_programmes(search_url, date, channel, series):
 	
     programmes = []
     for programme in data["results"]:
+        if audio_described and not programme["ad"]:
+            continue
         if date and not (programme["date"] == date):
             continue
         if channel and not (programme["service"] == channel):
@@ -206,13 +208,13 @@ def main():
     parser.add_argument('-q', '--quiet', action="store_true", default=False)
     parser.add_argument('-r', '--series', dest="series", default=False)
     parser.add_argument('-l', '--list', action="store_true", default=False)
+    parser.add_argument('-a', '--audio_described', action="store_true", default=False)
 
     global options
     options = parser.parse_args()
 
-    if options.debug:
-        global debug
-        debug = 1
+    global debug
+    debug = options.debug
 
     global config
     config = get_config(options.config_file)
@@ -235,7 +237,8 @@ def main():
         sys.exit()
         print(search_url)
 
-    programmes = get_programmes(search_url, options.date, options.channel, options.series)
+    programmes = get_programmes(search_url, options.date, options.channel, 
+                                options.series, options.audio_described)
 
     debug_print(programmes)
 
